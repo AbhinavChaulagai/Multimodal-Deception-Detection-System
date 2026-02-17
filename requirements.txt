@@ -1,0 +1,2 @@
+The install requirements for the project are as follows:
+pip install torch torchvision torchaudio transformers librosa opencv-python
