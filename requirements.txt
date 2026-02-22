@@ -1,0 +1,17 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+pydantic>=2.0.0
+
+# ML / inference
+torch>=2.1.0
+openai-whisper>=20231117
+sentence-transformers>=2.2.0
+mediapipe>=0.10.0
+opencv-python-headless>=4.8.0
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+
+# Cloud storage
+supabase>=2.3.0

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: deception-api
+    runtime: python
+    region: oregon
+    plan: free
+
+    buildCommand: pip install -r requirements.txt
+
+    # Render injects $PORT automatically
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --workers 1
+
+    envVars:
+      - key: SUPABASE_URL
+        sync: false          # enter manually in Render dashboard
+      - key: SUPABASE_KEY
+        sync: false
+      # Cache HuggingFace models inside the container (persists while running)
+      - key: HF_HOME
+        value: /tmp/hf_cache
+      - key: WHISPER_CACHE
+        value: /tmp/whisper_cache
