@@ -17,9 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import cv2
 import librosa
-import mediapipe as mp
 import numpy as np
 import torch
 import whisper
@@ -58,14 +56,6 @@ def _load_all_models():
 
     log.info("Loading MiniLM sentence encoder…")
     _M["minilm"] = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
-    log.info("Initialising MediaPipe FaceMesh…")
-    _M["face_mesh"] = mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.3,
-    )
 
     log.info("Loading PyTorch deception model…")
     if not MODEL_WEIGHTS.exists():
@@ -122,34 +112,8 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 def _extract_landmarks(video_path: str) -> np.ndarray:
-    face_mesh = _M["face_mesh"]
-    cap       = cv2.VideoCapture(video_path)
-    total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    if total == 0:
-        cap.release()
-        return np.zeros((NUM_VIDEO_FRAMES, 478 * 3), dtype=np.float32)
-
-    indices = np.linspace(0, max(total - 1, 0), NUM_VIDEO_FRAMES, dtype=int)
-    seq     = []
-
-    for idx in indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
-        ret, frame = cap.read()
-        if not ret:
-            seq.append(np.zeros(478 * 3, dtype=np.float32))
-            continue
-        rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = face_mesh.process(rgb)
-        if results.multi_face_landmarks:
-            lm     = results.multi_face_landmarks[0].landmark
-            coords = np.array([[l.x, l.y, l.z] for l in lm], dtype=np.float32).flatten()
-        else:
-            coords = np.zeros(478 * 3, dtype=np.float32)
-        seq.append(coords)
-
-    cap.release()
-    return np.array(seq, dtype=np.float32)
+    """Video branch disabled — return zeros to match training data."""
+    return np.zeros((NUM_VIDEO_FRAMES, 478 * 3), dtype=np.float32)
 
 
 def _extract_mfcc(video_path: str) -> np.ndarray:
