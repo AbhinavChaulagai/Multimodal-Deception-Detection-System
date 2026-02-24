@@ -13,6 +13,7 @@ Environment variables (set in Render dashboard):
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -43,19 +44,27 @@ MAX_AUDIO_FRAMES = int(AUDIO_DURATION * SAMPLE_RATE / HOP_LENGTH)  # ≈430
 MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB
 
 MODEL_WEIGHTS = Path(__file__).parent / "model_weights.pth"
+CACHE_DIR     = Path(__file__).parent / "model_cache"
 
 # ---------------------------------------------------------------------------
-# Global model registry (loaded once at startup)
+# Global model registry + readiness flag
 # ---------------------------------------------------------------------------
 _M: dict = {}
+_models_ready = threading.Event()   # set once all models are loaded
 
 
 def _load_all_models():
     log.info("Loading Whisper tiny (faster-whisper, int8 CPU)…")
-    _M["whisper"] = WhisperModel("tiny", device="cpu", compute_type="int8")
+    _M["whisper"] = WhisperModel(
+        "tiny", device="cpu", compute_type="int8",
+        download_root=str(CACHE_DIR / "whisper"),
+    )
 
     log.info("Loading MiniLM sentence encoder…")
-    _M["minilm"] = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    _M["minilm"] = SentenceTransformer(
+        "sentence-transformers/all-MiniLM-L6-v2",
+        cache_folder=str(CACHE_DIR),
+    )
 
     log.info("Loading PyTorch deception model…")
     if not MODEL_WEIGHTS.exists():
@@ -85,13 +94,18 @@ def _load_all_models():
         _M["supabase"] = None
 
     log.info("All models ready.")
+    _models_ready.set()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _load_all_models()
+    # Load models in a background thread so the port opens immediately.
+    # Render's port-scan timeout won't kill the process while models load.
+    t = threading.Thread(target=_load_all_models, daemon=True)
+    t.start()
     yield
     _M.clear()
+    _models_ready.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +196,15 @@ class PredictionResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models_loaded": bool(_M)}
+    ready = _models_ready.is_set()
+    return {"status": "ready" if ready else "loading", "models_loaded": ready}
 
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(file: UploadFile = File(...)):
+    if not _models_ready.is_set():
+        raise HTTPException(status_code=503, detail="Models still loading — please retry in ~60 seconds.")
+
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="Expected a video/* file.")
 
