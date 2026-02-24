@@ -20,7 +20,7 @@ from pathlib import Path
 import librosa
 import numpy as np
 import torch
-import whisper
+from faster_whisper import WhisperModel
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -51,8 +51,8 @@ _M: dict = {}
 
 
 def _load_all_models():
-    log.info("Loading Whisper tiny…")
-    _M["whisper"] = whisper.load_model("tiny")
+    log.info("Loading Whisper tiny (faster-whisper, int8 CPU)…")
+    _M["whisper"] = WhisperModel("tiny", device="cpu", compute_type="int8")
 
     log.info("Loading MiniLM sentence encoder…")
     _M["minilm"] = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -132,8 +132,8 @@ def _extract_mfcc(video_path: str) -> np.ndarray:
 
 def _transcribe(video_path: str) -> str:
     try:
-        result = _M["whisper"].transcribe(video_path, fp16=False)
-        return result["text"].strip()
+        segments, _ = _M["whisper"].transcribe(video_path)
+        return " ".join(s.text for s in segments).strip()
     except Exception as exc:
         log.error(f"Transcription failed: {exc}")
         return ""
