@@ -18,18 +18,13 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import cv2
-import librosa
-import mediapipe as mp
+# Only lightweight imports at module level so the port opens immediately.
+# Heavy imports (torch, librosa, mediapipe, cv2, …) are deferred into
+# _load_all_models(), which runs in a background thread.
 import numpy as np
-import torch
-from faster_whisper import WhisperModel
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
-
-from model import DeceptionModel, MODEL_CONFIG
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -57,10 +52,26 @@ LANDMARKER_URL   = (
 # Global model registry + readiness flag
 # ---------------------------------------------------------------------------
 _M: dict = {}
-_models_ready = threading.Event()   # set once all models are loaded
+_models_ready = threading.Event()
 
 
 def _load_all_models():
+    # All heavy imports happen here, inside the background thread,
+    # so the main thread (uvicorn) can bind the port without waiting.
+    import cv2
+    import librosa
+    import mediapipe as mp
+    import torch
+    from faster_whisper import WhisperModel
+    from sentence_transformers import SentenceTransformer
+    from model import DeceptionModel, MODEL_CONFIG
+
+    # Store frequently used modules so helper functions can access them
+    _M["cv2"]     = cv2
+    _M["librosa"] = librosa
+    _M["mp"]      = mp
+    _M["torch"]   = torch
+
     log.info("Loading Whisper tiny (faster-whisper, int8 CPU)…")
     _M["whisper"] = WhisperModel(
         "tiny", device="cpu", compute_type="int8",
@@ -83,7 +94,7 @@ def _load_all_models():
     model.eval()
     _M["model"] = model
     cv_auc = ckpt.get("cv_auc")
-    log.info(f"  CV AUC from training: {cv_auc:.3f}" if cv_auc is not None else "  CV AUC from training: N/A")
+    log.info(f"  CV AUC from training: {cv_auc:.3f}" if cv_auc is not None else "  CV AUC: N/A")
 
     # Supabase (optional)
     supabase_url = os.environ.get("SUPABASE_URL", "")
@@ -120,8 +131,7 @@ def _load_all_models():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load models in a background thread so the port opens immediately.
-    # Render's port-scan timeout won't kill the process while models load.
+    # Spawn background thread — port opens immediately, models load behind the scenes
     t = threading.Thread(target=_load_all_models, daemon=True)
     t.start()
     yield
@@ -138,7 +148,7 @@ app = FastAPI(title="Deception Detection API", version="1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # tighten to your Netlify domain in production
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -149,8 +159,11 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 def _extract_landmarks(video_path: str) -> np.ndarray:
-    """Extract MediaPipe FaceLandmarker landmarks from NUM_VIDEO_FRAMES uniformly sampled frames."""
-    cap = cv2.VideoCapture(video_path)
+    cv2        = _M["cv2"]
+    mp         = _M["mp"]
+    landmarker = _M["face_landmarker"]
+
+    cap   = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     if total == 0:
@@ -159,7 +172,6 @@ def _extract_landmarks(video_path: str) -> np.ndarray:
 
     frame_indices = np.linspace(0, total - 1, NUM_VIDEO_FRAMES, dtype=int)
     rows = []
-    landmarker = _M["face_landmarker"]
 
     for idx in frame_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
@@ -182,12 +194,13 @@ def _extract_landmarks(video_path: str) -> np.ndarray:
         rows.append(coords)
 
     cap.release()
-    return np.vstack(rows).astype(np.float32)  # (NUM_VIDEO_FRAMES, 1434)
+    return np.vstack(rows).astype(np.float32)
 
 
 def _extract_mfcc(video_path: str) -> np.ndarray:
+    librosa = _M["librosa"]
     try:
-        y, _ = librosa.load(video_path, sr=SAMPLE_RATE, mono=True, duration=AUDIO_DURATION)
+        y, _  = librosa.load(video_path, sr=SAMPLE_RATE, mono=True, duration=AUDIO_DURATION)
         mfcc  = librosa.feature.mfcc(y=y, sr=SAMPLE_RATE, n_mfcc=N_MFCC, hop_length=HOP_LENGTH).T
         if len(mfcc) < MAX_AUDIO_FRAMES:
             mfcc = np.vstack([mfcc, np.zeros((MAX_AUDIO_FRAMES - len(mfcc), N_MFCC))])
@@ -239,9 +252,9 @@ def _store_result(file_bytes: bytes, filename: str, score: float, transcript: st
 # ---------------------------------------------------------------------------
 
 class PredictionResponse(BaseModel):
-    score:      float   # 0.0 (very truthful) → 1.0 (very deceptive)
-    label:      str     # "Truthful" or "Deceptive"
-    confidence: str     # "High" | "Low"
+    score:      float
+    label:      str
+    confidence: str
     transcript: str
 
 
@@ -267,7 +280,6 @@ async def predict(file: UploadFile = File(...)):
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 60 MB limit.")
 
-    # Determine suffix from content-type
     suffix = ".webm" if "webm" in file.content_type else ".mp4"
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -277,27 +289,26 @@ async def predict(file: UploadFile = File(...)):
     try:
         log.info(f"Extracting features from {len(file_bytes)//1024} KB video…")
 
-        video_feat = _extract_landmarks(tmp_path)   # (30, 1434)
-        audio_feat = _extract_mfcc(tmp_path)         # (T_a, 40)
+        video_feat = _extract_landmarks(tmp_path)
+        audio_feat = _extract_mfcc(tmp_path)
         transcript = _transcribe(tmp_path)
-        text_emb   = _embed_text(transcript)         # (384,)
+        text_emb   = _embed_text(transcript)
 
         log.info(f"Transcript: {transcript[:120]!r}")
 
-        # Inference
+        torch = _M["torch"]
         model = _M["model"]
         with torch.no_grad():
-            v      = torch.from_numpy(video_feat).unsqueeze(0)  # (1, 30, 1434)
-            a      = torch.from_numpy(audio_feat).unsqueeze(0)  # (1, T_a, 40)
-            t      = torch.from_numpy(text_emb).unsqueeze(0)    # (1, 384)
-            logit  = model(v, a, t)
-            score  = float(torch.sigmoid(logit).item())
+            v     = torch.from_numpy(video_feat).unsqueeze(0)
+            a     = torch.from_numpy(audio_feat).unsqueeze(0)
+            t     = torch.from_numpy(text_emb).unsqueeze(0)
+            logit = model(v, a, t)
+            score = float(torch.sigmoid(logit).item())
 
         label      = "Deceptive" if score >= 0.5 else "Truthful"
         confidence = "High" if abs(score - 0.5) > 0.2 else "Low"
         log.info(f"Score: {score:.3f}  → {label} ({confidence} confidence)")
 
-        # Cloud storage (non-blocking — errors are logged, not raised)
         filename = f"{uuid.uuid4()}{suffix}"
         _store_result(file_bytes, filename, score, transcript)
 
