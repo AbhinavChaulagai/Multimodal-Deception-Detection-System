@@ -53,9 +53,20 @@ LANDMARKER_URL   = (
 # ---------------------------------------------------------------------------
 _M: dict = {}
 _models_ready = threading.Event()
+_load_error: str = ""          # non-empty if background load failed
 
 
 def _load_all_models():
+    global _load_error
+    try:
+        _load_all_models_inner()
+    except Exception as exc:
+        import traceback
+        _load_error = traceback.format_exc()
+        log.error(f"Model loading FAILED: {exc}\n{_load_error}")
+
+
+def _load_all_models_inner():
     # All heavy imports happen here, inside the background thread,
     # so the main thread (uvicorn) can bind the port without waiting.
     import cv2
@@ -265,6 +276,8 @@ class PredictionResponse(BaseModel):
 @app.get("/health")
 def health():
     ready = _models_ready.is_set()
+    if _load_error:
+        return {"status": "error", "models_loaded": False, "error": _load_error}
     return {"status": "ready" if ready else "loading", "models_loaded": ready}
 
 
