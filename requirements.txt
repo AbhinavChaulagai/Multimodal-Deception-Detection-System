@@ -7,6 +7,8 @@ pydantic>=2.0.0
 # torch is installed via buildCommand in render.yaml (CPU-only build)
 faster-whisper>=1.0.0
 sentence-transformers>=2.2.0
+mediapipe>=0.10.0
+opencv-python-headless>=4.8.0
 librosa>=0.10.0
 soundfile>=0.12.0
 numpy>=1.24.0

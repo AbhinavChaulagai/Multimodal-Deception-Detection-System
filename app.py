@@ -18,7 +18,9 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import cv2
 import librosa
+import mediapipe as mp
 import numpy as np
 import torch
 from faster_whisper import WhisperModel
@@ -43,8 +45,13 @@ HOP_LENGTH       = 512
 MAX_AUDIO_FRAMES = int(AUDIO_DURATION * SAMPLE_RATE / HOP_LENGTH)  # ≈430
 MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB
 
-MODEL_WEIGHTS = Path(__file__).parent / "model_weights.pth"
-CACHE_DIR     = Path(__file__).parent / "model_cache"
+MODEL_WEIGHTS    = Path(__file__).parent / "model_weights.pth"
+CACHE_DIR        = Path(__file__).parent / "model_cache"
+LANDMARKER_MODEL = CACHE_DIR / "face_landmarker.task"
+LANDMARKER_URL   = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+)
 
 # ---------------------------------------------------------------------------
 # Global model registry + readiness flag
@@ -93,6 +100,20 @@ def _load_all_models():
         log.warning("SUPABASE_URL / SUPABASE_KEY not set — cloud storage disabled.")
         _M["supabase"] = None
 
+    log.info("Initialising MediaPipe FaceLandmarker…")
+    if not LANDMARKER_MODEL.exists():
+        import urllib.request
+        log.info(f"  Downloading FaceLandmarker model → {LANDMARKER_MODEL}")
+        LANDMARKER_MODEL.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(LANDMARKER_URL, LANDMARKER_MODEL)
+    base_options = mp.tasks.BaseOptions(model_asset_path=str(LANDMARKER_MODEL))
+    options = mp.tasks.vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        running_mode=mp.tasks.vision.RunningMode.IMAGE,
+        num_faces=1,
+    )
+    _M["face_landmarker"] = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+
     log.info("All models ready.")
     _models_ready.set()
 
@@ -104,6 +125,8 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=_load_all_models, daemon=True)
     t.start()
     yield
+    if "face_landmarker" in _M:
+        _M["face_landmarker"].close()
     _M.clear()
     _models_ready.clear()
 
@@ -126,8 +149,40 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 def _extract_landmarks(video_path: str) -> np.ndarray:
-    """Video branch disabled — return zeros to match training data."""
-    return np.zeros((NUM_VIDEO_FRAMES, 478 * 3), dtype=np.float32)
+    """Extract MediaPipe FaceLandmarker landmarks from NUM_VIDEO_FRAMES uniformly sampled frames."""
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if total == 0:
+        cap.release()
+        return np.zeros((NUM_VIDEO_FRAMES, 478 * 3), dtype=np.float32)
+
+    frame_indices = np.linspace(0, total - 1, NUM_VIDEO_FRAMES, dtype=int)
+    rows = []
+    landmarker = _M["face_landmarker"]
+
+    for idx in frame_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+        ret, frame = cap.read()
+        if not ret:
+            rows.append(np.zeros(478 * 3, dtype=np.float32))
+            continue
+
+        rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = landmarker.detect(mp_img)
+
+        if result.face_landmarks:
+            lm     = result.face_landmarks[0]
+            coords = np.array([[l.x, l.y, l.z] for l in lm],
+                               dtype=np.float32).flatten()
+        else:
+            coords = np.zeros(478 * 3, dtype=np.float32)
+
+        rows.append(coords)
+
+    cap.release()
+    return np.vstack(rows).astype(np.float32)  # (NUM_VIDEO_FRAMES, 1434)
 
 
 def _extract_mfcc(video_path: str) -> np.ndarray:
