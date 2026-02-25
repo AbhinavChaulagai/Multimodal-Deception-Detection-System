@@ -69,13 +69,21 @@ def _load_all_models():
 def _load_all_models_inner():
     # All heavy imports happen here, inside the background thread,
     # so the main thread (uvicorn) can bind the port without waiting.
+    log.info("STEP 1: importing cv2…")
     import cv2
+    log.info("STEP 2: importing librosa…")
     import librosa
+    log.info("STEP 3: importing mediapipe…")
     import mediapipe as mp
+    log.info("STEP 4: importing torch…")
     import torch
+    log.info("STEP 5: importing faster_whisper…")
     from faster_whisper import WhisperModel
+    log.info("STEP 6: importing sentence_transformers…")
     from sentence_transformers import SentenceTransformer
+    log.info("STEP 7: importing model…")
     from model import DeceptionModel, MODEL_CONFIG
+    log.info("All imports done.")
 
     # Store frequently used modules so helper functions can access them
     _M["cv2"]     = cv2
