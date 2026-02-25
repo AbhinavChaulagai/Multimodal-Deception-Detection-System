@@ -148,11 +148,18 @@ def _load_all_models_inner():
     _models_ready.set()
 
 
+DEMO_MODE = os.environ.get("DISABLE_MODEL", "").lower() in ("1", "true", "yes")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Spawn background thread — port opens immediately, models load behind the scenes
-    t = threading.Thread(target=_load_all_models, daemon=True)
-    t.start()
+    if DEMO_MODE:
+        log.info("DISABLE_MODEL=true — skipping model load (demo/web mode).")
+        _models_ready.set()          # mark ready so health returns "ready"
+    else:
+        # Spawn background thread — port opens immediately, models load behind the scenes
+        t = threading.Thread(target=_load_all_models, daemon=True)
+        t.start()
     yield
     if "face_landmarker" in _M:
         _M["face_landmarker"].close()
@@ -286,11 +293,13 @@ def health():
     ready = _models_ready.is_set()
     if _load_error:
         return {"status": "error", "models_loaded": False, "error": _load_error}
-    return {"status": "ready" if ready else "loading", "models_loaded": ready}
+    return {"status": "ready" if ready else "loading", "models_loaded": ready, "demo_mode": DEMO_MODE}
 
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(file: UploadFile = File(...)):
+    if DEMO_MODE:
+        raise HTTPException(status_code=503, detail="Live inference is disabled in the web demo — the model requires more RAM than the free hosting tier provides. Run the backend locally to use full inference.")
     if not _models_ready.is_set():
         raise HTTPException(status_code=503, detail="Models still loading — please retry in ~60 seconds.")
 
