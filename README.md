@@ -88,7 +88,7 @@ Multimodal fusion model
 
 📦 Installation (Local Setup)
 # Clone the repository
-git clone https://github.com/your-username/your-repo-name.git
+git clone https://github.com/AbhinavChaulagai/Multimodal-Deception-Detection-System.git
 
 # Backend setup
 cd backend
