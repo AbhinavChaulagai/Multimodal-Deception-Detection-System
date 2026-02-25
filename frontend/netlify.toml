@@ -1,0 +1,10 @@
+[build]
+  publish = "."          # deploy the frontend/ folder as-is (static)
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Allow camera/mic access from this origin
+    Permissions-Policy   = "camera=(*), microphone=(*)"
+    X-Frame-Options      = "DENY"
+    X-Content-Type-Options = "nosniff"

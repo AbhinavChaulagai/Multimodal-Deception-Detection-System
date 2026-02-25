@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deception Detection</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header>
+      <h1>Deception Detection</h1>
+      <p class="subtitle">AI-powered multimodal analysis &mdash; video · audio · language</p>
+    </header>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+      <strong>Research demo only.</strong> Trained on 121 court-testimony clips.
+      Accuracy is limited; do not use for real decisions.
+    </div>
+
+    <!-- Demo mode banner (shown only when backend has DISABLE_MODEL=true) -->
+    <div class="demo-banner hidden" id="demo-banner">
+      <span class="demo-banner-icon">&#9888;</span>
+      <div>
+        <strong>Live inference unavailable</strong> &mdash; the model exceeds free-tier memory limits.
+        <br>To run full analysis, <a href="https://github.com/AbhinavChaulagai/Multimodal-Deception-Detection-System" target="_blank" rel="noopener">clone the repo</a> and run the backend locally.
+      </div>
+    </div>
+
+    <!-- Camera card -->
+    <div class="card" id="camera-card">
+      <div class="video-wrapper">
+        <video id="preview" autoplay muted playsinline></video>
+        <div class="overlay" id="overlay">
+          <span id="overlay-text">Camera off</span>
+        </div>
+        <div class="timer" id="timer" hidden>0:00</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-primary" id="btn-start-cam">
+          Enable Camera &amp; Mic
+        </button>
+        <button class="btn btn-danger" id="btn-record" hidden>
+          &#x25cf;&ensp;Record
+        </button>
+        <button class="btn btn-secondary" id="btn-stop" hidden>
+          &#x25a0;&ensp;Stop &amp; Analyse
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading card -->
+    <div class="card hidden" id="loading-card">
+      <div class="spinner"></div>
+      <p class="loading-text">Analysing&hellip; this may take up to 90 s on a cold start.</p>
+    </div>
+
+    <!-- Result card -->
+    <div class="card hidden" id="result-card">
+      <h2 id="result-label" class="result-label">—</h2>
+
+      <!-- Gauge -->
+      <div class="gauge-wrap">
+        <div class="gauge" id="gauge">
+          <div class="gauge-fill" id="gauge-fill"></div>
+          <div class="gauge-cover">
+            <span id="score-pct">—</span>
+            <small>deception</small>
+          </div>
+        </div>
+        <div class="gauge-labels">
+          <span>Truthful</span>
+          <span>Deceptive</span>
+        </div>
+      </div>
+
+      <p class="confidence-line">Confidence: <strong id="confidence">—</strong></p>
+
+      <!-- Transcript -->
+      <details class="transcript-block">
+        <summary>Transcript (Whisper)</summary>
+        <p id="transcript-text">—</p>
+      </details>
+
+      <button class="btn btn-secondary" id="btn-retry">Try Again</button>
+    </div>
+
+    <!-- Error card -->
+    <div class="card hidden" id="error-card">
+      <p class="error-msg" id="error-msg">Something went wrong.</p>
+      <button class="btn btn-secondary" id="btn-retry-err">Try Again</button>
+    </div>
+
+  </div><!-- /.app -->
+
+  <script src="app.js"></script>
+</body>
+</html>
