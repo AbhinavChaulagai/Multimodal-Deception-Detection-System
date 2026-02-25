@@ -11,7 +11,7 @@
  */
 
 // ─── Configuration ────────────────────────────────────────────────────
-const API_BASE = "https://YOUR-APP-NAME.onrender.com";  // ← update after Render deploy
+const API_BASE = "https://multimodal-deception-detection-system.onrender.com";  // ← update after Render deploy
 const MAX_RECORD_SECONDS = 60;
 
 // ─── DOM refs ─────────────────────────────────────────────────────────
