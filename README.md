@@ -1,20 +1,19 @@
-🎭 Multimodal Deception Detection System
+ Multimodal Deception Detection System
 
 A full-stack AI-powered deception detection system that analyzes video, audio, and text transcription data to detect potential deceptive behavior using multimodal machine learning techniques.
-
-🚀 Overview
+ Overview
 
 This project leverages multimodal data processing to improve deception detection accuracy by combining:
 
-🎥 Video Analysis – Facial expressions, micro-expressions, and behavioral cues
+ Video Analysis – Facial expressions, micro-expressions, and behavioral cues
 
-🎙️ Audio Analysis – Voice stress, tone, pitch variation, and speech patterns
+ Audio Analysis – Voice stress, tone, pitch variation, and speech patterns
 
-📝 Text Transcription Analysis – Linguistic patterns, sentiment, and semantic inconsistencies
+ Text Transcription Analysis – Linguistic patterns, sentiment, and semantic inconsistencies
 
 By integrating all three modalities, the system enhances prediction reliability compared to single-modality approaches.
 
-🏗️ Architecture
+ Architecture
 
 Frontend:
 
@@ -50,7 +49,7 @@ Multimodal fusion layer combines predictions
 
 Final deception score is returned
 
-🧠 Key Features
+ Key Features
 
 Multimodal ML-based detection
 
@@ -62,7 +61,7 @@ Scalable cloud deployment
 
 Clean frontend interface
 
-🛠️ Tech Stack
+ Tech Stack
 
 Frontend
 
@@ -86,7 +85,7 @@ NLP models (for transcription analysis)
 
 Multimodal fusion model
 
-📦 Installation (Local Setup)
+ Installation (Local Setup)
 # Clone the repository
 git clone https://github.com/AbhinavChaulagai/Multimodal-Deception-Detection-System.git
 
@@ -99,13 +98,13 @@ python app.py
 cd frontend
 npm install
 npm start
-🌍 Deployment
+ Deployment
 
 Backend deployed on Render
 
 Frontend deployed on Netlify
 
-📊 Use Cases
+ Use Cases
 
 Behavioral research
 
